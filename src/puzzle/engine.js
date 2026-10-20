@@ -84,10 +84,10 @@ export function mountPuzzle() {
     images: [],
     selected: -1,
     width: 1080,
-    height: 1350,
-    ratioId: "4:5",
-    margin: 4,
-    gap: 2,
+    height: 1080,
+    ratioId: "1:1",
+    margin: 0,
+    gap: 0,
     radius: 0,
     bg: "#ffffff",
     format: "image/jpeg",
@@ -226,18 +226,46 @@ export function mountPuzzle() {
   }
 
   function renderStageFrame() {
+    const workspace = $("workspace");
     const frame = $("stageFrame");
-    frame.style.aspectRatio = `${state.width} / ${state.height}`;
-    const maxH = $("workspace").clientHeight - 8;
-    const maxW = $("workspace").clientWidth - 8;
-    if (maxH > 80 && maxW > 80) {
-      const byHeight = maxH * state.width / state.height;
-      frame.style.width = `${Math.min(maxW, byHeight)}px`;
+    if (!workspace || !frame) return;
+
+    // Leave room for workspace padding; keep a tiny inset so shadows aren't clipped.
+    const inset = 8;
+    const availW = Math.max(40, workspace.clientWidth - inset * 2);
+    const availH = Math.max(40, workspace.clientHeight - inset * 2);
+    const ratio = state.width / Math.max(state.height, 1);
+
+    // Prefer fitting the whole canvas in view; scrollbars cover residual overflow.
+    let displayW = availW;
+    let displayH = Math.round(displayW / ratio);
+    if (displayH > availH) {
+      displayH = availH;
+      displayW = Math.round(displayH * ratio);
     }
+    displayW = Math.max(1, displayW);
+    displayH = Math.max(1, displayH);
+
+    frame.style.aspectRatio = "auto";
+    frame.style.width = `${displayW}px`;
+    frame.style.height = `${displayH}px`;
+    frame.style.maxWidth = "none";
+    frame.style.maxHeight = "none";
   }
 
   function imageStyle(image) {
-    return `object-position:${image.fx}% ${image.fy}%;transform:scale(${image.scale});filter:${filterCss(image)}`;
+    const s = Math.max(1, Number(image.scale) || 1);
+    const fx = Number.isFinite(image.fx) ? image.fx : 50;
+    const fy = Number.isFinite(image.fy) ? image.fy : 50;
+    const filter = filterCss(image);
+    // scale=1：用 object-position 裁切平移
+    // scale>1：放大盒子再用 left/top 平移，保证格子内可左右/上下拖动
+    if (s <= 1.001) {
+      return `inset:0;width:100%;height:100%;left:auto;top:auto;object-position:${fx}% ${fy}%;transform:none;filter:${filter}`;
+    }
+    const left = (1 - s) * fx;
+    const top = (1 - s) * fy;
+    return `inset:auto;width:${s * 100}%;height:${s * 100}%;left:${left}%;top:${top}%;object-position:50% 50%;transform:none;filter:${filter}`;
   }
 
   function renderFilters() {
@@ -259,7 +287,9 @@ export function mountPuzzle() {
     stage.style.gridTemplateRows = `repeat(${item.rows}, 1fr)`;
     stage.style.gridTemplateAreas = areas;
     stage.style.background = state.bg;
-    stage.style.aspectRatio = `${state.width} / ${state.height}`;
+    stage.style.aspectRatio = "auto";
+    stage.style.width = "100%";
+    stage.style.height = "100%";
     const letters = slotsOf(item);
     stage.innerHTML = letters.map((letter, index) => {
       const image = state.images[index];
@@ -426,23 +456,41 @@ export function mountPuzzle() {
     if (!bitmap.naturalWidth) return;
     const iw = bitmap.naturalWidth;
     const ih = bitmap.naturalHeight;
-    const cover = Math.max(rect.w / iw, rect.h / ih);
-    const dw = iw * cover;
-    const dh = ih * cover;
-    const fx = image.fx / 100;
-    const fy = image.fy / 100;
-    let left = rect.x + fx * rect.w - fx * dw;
-    let top = rect.y + fy * rect.h - fy * dh;
-    left = Math.min(rect.x, Math.max(rect.x + rect.w - dw, left));
-    top = Math.min(rect.y, Math.max(rect.y + rect.h - dh, top));
-    const scale = image.scale;
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    left = cx + (left - cx) * scale;
-    top = cy + (top - cy) * scale;
+    const s = Math.max(1, Number(image.scale) || 1);
+    const fx = (Number.isFinite(image.fx) ? image.fx : 50) / 100;
+    const fy = (Number.isFinite(image.fy) ? image.fy : 50) / 100;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x, rect.y, rect.w, rect.h);
+    ctx.clip();
     ctx.filter = filterCss(image);
-    ctx.drawImage(bitmap, left, top, dw * scale, dh * scale);
+
+    if (s <= 1.001) {
+      const cover = Math.max(rect.w / iw, rect.h / ih);
+      const dw = iw * cover;
+      const dh = ih * cover;
+      let left = rect.x + fx * rect.w - fx * dw;
+      let top = rect.y + fy * rect.h - fy * dh;
+      left = Math.min(rect.x, Math.max(rect.x + rect.w - dw, left));
+      top = Math.min(rect.y, Math.max(rect.y + rect.h - dh, top));
+      ctx.drawImage(bitmap, left, top, dw, dh);
+    } else {
+      // Match preview: oversized cover box + left/top = (1-s)*fx
+      const boxW = rect.w * s;
+      const boxH = rect.h * s;
+      const boxX = rect.x + rect.w * (1 - s) * fx;
+      const boxY = rect.y + rect.h * (1 - s) * fy;
+      const cover = Math.max(boxW / iw, boxH / ih);
+      const dw = iw * cover;
+      const dh = ih * cover;
+      const left = boxX + (boxW - dw) / 2;
+      const top = boxY + (boxH - dh) / 2;
+      ctx.drawImage(bitmap, left, top, dw, dh);
+    }
+
     ctx.filter = "none";
+    ctx.restore();
   }
 
   function roundClip(ctx, x, y, w, h, r) {
@@ -690,6 +738,20 @@ export function mountPuzzle() {
     $("workspace").classList.remove("will-delete");
   }
 
+  function applyPanFromPointer(gestureState, event, cell, image) {
+    const rect = cell.getBoundingClientRect();
+    // 在格子内拖过一整格 ≈ 走完 fx/fy 全范围，放大后左右移动更跟手
+    const dx = ((event.clientX - gestureState.x) / Math.max(rect.width, 1)) * 100;
+    const dy = ((event.clientY - gestureState.y) / Math.max(rect.height, 1)) * 100;
+    image.fx = Math.max(0, Math.min(100, gestureState.fx - dx));
+    image.fy = Math.max(0, Math.min(100, gestureState.fy - dy));
+    const img = cell.querySelector("img");
+    if (img) {
+      img.style.cssText = imageStyle(image);
+      img.style.cursor = "grabbing";
+    }
+  }
+
   $("stage").addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.target.closest(".empty")) return;
     const cell = event.target.closest(".cell");
@@ -717,25 +779,27 @@ export function mountPuzzle() {
     if (!image || !cell) return;
     const moved = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
     const inside = cellAt(event.clientX, event.clientY) === cell;
-    if (gesture.mode !== "drag" && inside) {
-      if (moved < 4) return;
-      gesture.mode = "pan";
-      const rect = cell.getBoundingClientRect();
-      const dx = (event.clientX - gesture.x) / rect.width * 70;
-      const dy = (event.clientY - gesture.y) / rect.height * 70;
-      image.fx = Math.max(0, Math.min(100, gesture.fx - dx));
-      image.fy = Math.max(0, Math.min(100, gesture.fy - dy));
-      const img = cell.querySelector("img");
-      if (img) img.style.cssText = imageStyle(image);
+    const zoomed = (image.scale || 1) > 1.01;
+
+    // 已进入平移：一直平移（放大后优先保证左右/上下拖动）
+    if (gesture.mode === "pan") {
+      applyPanFromPointer(gesture, event, cell, image);
       return;
     }
-    if (gesture.mode !== "drag") {
-      image.fx = gesture.fx;
-      image.fy = gesture.fy;
-      const img = cell.querySelector("img");
-      if (img) img.style.cssText = imageStyle(image);
+
+    if (gesture.mode === "pending") {
+      if (moved < 4) return;
+      // 放大时默认平移；未放大则在格内平移、拖出格子换序
+      if (zoomed || inside) {
+        gesture.mode = "pan";
+        applyPanFromPointer(gesture, event, cell, image);
+        return;
+      }
       gesture.mode = "drag";
     }
+
+    if (gesture.mode !== "drag") return;
+
     clearDragMarks();
     cell.classList.add("is-dragging");
     const hit = document.elementFromPoint(event.clientX, event.clientY);

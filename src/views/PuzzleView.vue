@@ -54,10 +54,10 @@
         <section>
           <h2>样式</h2>
           <label class="slider-row">边距 <span id="marginVal"></span>
-            <input id="margin" type="range" min="0" max="20" value="4">
+            <input id="margin" type="range" min="0" max="20" value="0">
           </label>
           <label class="slider-row">间距 <span id="gapVal"></span>
-            <input id="gap" type="range" min="0" max="12" value="2">
+            <input id="gap" type="range" min="0" max="12" value="0">
           </label>
           <label class="slider-row">圆角 <span id="radiusVal"></span>
             <input id="radius" type="range" min="0" max="20" value="0">

@@ -197,8 +197,9 @@ button, input { font: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  overflow: hidden;
+  padding: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .workspace.dragover .stage {
@@ -207,16 +208,22 @@ button, input { font: inherit; }
 }
 
 .stage-frame {
-  width: 100%;
-  max-height: 100%;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
 }
 
 .stage {
   width: 100%;
+  height: 100%;
   display: grid;
   background: #fff;
   box-shadow: 0 10px 40px rgba(28, 25, 23, 0.08);
   position: relative;
+  min-width: 0;
+  min-height: 0;
 }
 
 .cell {
@@ -238,12 +245,19 @@ button, input { font: inherit; }
   inset: 0;
   width: 100%;
   height: 100%;
+  max-width: none;
+  max-height: none;
   object-fit: cover;
   transform-origin: center center;
   user-select: none;
   -webkit-user-drag: none;
   cursor: grab;
   touch-action: none;
+  will-change: left, top, width, height;
+}
+
+.cell img:active {
+  cursor: grabbing;
 }
 
 .cell.is-dragging {
