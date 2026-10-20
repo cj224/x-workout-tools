@@ -779,34 +779,33 @@ export function mountPuzzle() {
     if (!image || !cell) return;
     const moved = Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y);
     const inside = cellAt(event.clientX, event.clientY) === cell;
-    const zoomed = (image.scale || 1) > 1.01;
 
-    // 已进入平移：一直平移（放大后优先保证左右/上下拖动）
-    if (gesture.mode === "pan") {
+    // 在原格子内：平移（放大后可左右/上下移动画面）
+    if (gesture.mode !== "drag" && inside) {
+      if (moved < 4) return;
+      gesture.mode = "pan";
       applyPanFromPointer(gesture, event, cell, image);
       return;
     }
 
-    if (gesture.mode === "pending") {
+    // 拖出格子：切换为换序 / 拖到空白处删除
+    if (gesture.mode !== "drag") {
       if (moved < 4) return;
-      // 放大时默认平移；未放大则在格内平移、拖出格子换序
-      if (zoomed || inside) {
-        gesture.mode = "pan";
-        applyPanFromPointer(gesture, event, cell, image);
-        return;
-      }
+      image.fx = gesture.fx;
+      image.fy = gesture.fy;
+      const img = cell.querySelector("img");
+      if (img) img.style.cssText = imageStyle(image);
       gesture.mode = "drag";
     }
-
-    if (gesture.mode !== "drag") return;
 
     clearDragMarks();
     cell.classList.add("is-dragging");
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     const target = hit ? hit.closest(".cell") : null;
     const outsideStage = !hit || !hit.closest("#stage");
-    if (target && target !== cell) target.classList.add("drop-target");
-    else if (outsideStage && !(hit && hit.closest(".sidebar, .panel, .toolbar"))) {
+    if (target && Number(target.dataset.index) !== gesture.index) {
+      target.classList.add("drop-target");
+    } else if (outsideStage && !(hit && hit.closest(".sidebar, .panel, .toolbar"))) {
       $("workspace").classList.add("will-delete");
     }
   });
@@ -826,9 +825,14 @@ export function mountPuzzle() {
     if (targetCell) {
       const target = Number(targetCell.dataset.index);
       if (target !== current.index) swap(current.index, target);
+      else renderStage();
       return;
     }
-    if (hit && hit.closest("#stage, .sidebar, .panel, .toolbar")) return;
+    // 拖到工作区空白处删除；停在画布格内/侧栏/工具栏则取消
+    if (hit && hit.closest("#stage, .sidebar, .panel, .toolbar")) {
+      renderStage();
+      return;
+    }
     removeAt(current.index);
   }
   $("stage").addEventListener("pointerup", endGesture);
